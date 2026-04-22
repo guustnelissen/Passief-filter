@@ -73,7 +73,7 @@ TF_teller = real(prod(-polen));
 
 TF_noemer = real(poly(polen));
 
-H = tf(TF_teller, TF_noemer); %nog te schalen!!!
+H = tf(TF_teller, TF_noemer); %Dit is voor de laagdoorlaat
 display(H)
 %% Schaling H met spanningsdeler (6.22)
 R2 = RL_norm; %1
@@ -96,5 +96,62 @@ teller_kwad = 2.664*2.664;
 
 T_kwad = tf(teller_kwad, noemer_kwad);
 
-Ro_kwad = 1 - 4*(R1/R2) * T_kwad;
+Ro_kwad = 1 - 4*(R1/R2) * T_kwad
+%% n en m berekenen
+%n en m berkenen kan ook al sneller uit T(s) met formule (6.25 (a))
+% 1. Haal de stabiele noemer (m + n)
+[~, den_coeffs] = tfdata(Ro_kwad, 'v');
+all_poles = roots(den_coeffs);
+stable_poles = all_poles(real(all_poles) < -1e-5); %pak de neg polen
+D_s = poly(stable_poles); % Dit is m + n
+
+% 2. Splits m en n
+m_coeffs = zeros(size(D_s)); %initiatie
+n_coeffs = zeros(size(D_s));
+
+% Even indices (s^0, s^2...) en Oneven indices (s^1, s^3...)
+% Let op: MATLAB indexeert van hoog naar laag [s^3, s^2, s^1, s^0]
+indices = length(D_s)-1:-1:0;
+m_mask = mod(indices, 2) == 0; %is het getal deelbaar door 2?
+n_mask = mod(indices, 2) ~= 0; %is er een restwaarde?
+
+m_coeffs(m_mask) = D_s(m_mask);
+n_coeffs(n_mask) = D_s(n_mask);
+
+m = tf(m_coeffs, 1);
+n = tf(n_coeffs, 1);
+n2_m2 = m^2 - n^2 %dit is inderdaad de noemer van ro_kwad, :)
+
+%% nr en mr bereken
+
+[num_coeffs, ~] = tfdata(Ro_kwad, 'v');
+all_zeros = roots(num_coeffs);
+stable_zeros = all_zeros(real(all_zeros) < 0) %We kiezen hier even ez de linkse nullen. 
+% Dit kunnen ook andere zijn, dit gaan mss ook zo moeten want je gaat mss niet de goede K factor vinden met de nullen dat je hebt gekozen
+F_s = poly(stable_zeros); % Dit is mr + nr
+
+% 2. Splits m en n
+mr_coeffs = zeros(size(F_s)); %initiatie
+nr_coeffs = zeros(size(F_s));
+
+% Even indices (s^0, s^2...) en Oneven indices (s^1, s^3...)
+% Let op: MATLAB indexeert van hoog naar laag [s^3, s^2, s^1, s^0]
+indices = length(F_s)-1:-1:0;
+mr_mask = mod(indices, 2) == 0; %is het getal deelbaar door 2?
+nr_mask = mod(indices, 2) ~= 0; %is er een restwaarde?
+
+mr_coeffs(mr_mask) = F_s(mr_mask);
+nr_coeffs(nr_mask) = F_s(nr_mask);
+
+mr = tf(mr_coeffs, 1);
+nr = tf(nr_coeffs, 1);
+nr2_mr2 = mr^2 - nr^2; %dit is inderdaad de teller van ro_kwad, :)
+
+%% N12 door (6.25 (a)) om te vormen
+fef =  2* sqrt(R1/R2) * T;
+[num_coeffs, ~] = tfdata(fef, 'v');
+[~, den_coeffs] = tfdata(fef, 'v');
+N12 = num_coeffs;
+%als check:
+%den_coeffs = n + m ; KLOPT :)
 
