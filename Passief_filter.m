@@ -32,10 +32,10 @@ f_center = sqrt(prod_d);
 display(f_center)
 %% Frequentie normalisatie
 
-fs1_n = fs1/f_center;
-fs2_n = fs2_new/f_center;
-fd1_n = fd1/f_center;
-fd2_n = fd2/f_center;
+fs1_n = fs1/f_center
+fs2_n = fs2_new/f_center
+fd1_n = fd1/f_center
+fd2_n = fd2/f_center
 f_center_n = f_center/f_center;
 
 %Weerstandsnormalisatie
@@ -81,7 +81,8 @@ R1 = RE_norm; %Rn = 0.23
 
 T = (R2/(R1 + R2)) * H;
 display(T)
-
+figure
+bode(T);
 %% (6.25) (6.26)
 %T(s)*T(-s)
 % Index:         s^3    s^2     s^1     s^0
@@ -155,3 +156,15 @@ N12 = num_coeffs;
 %als check:
 %den_coeffs = n + m ; KLOPT :)
 
+%% Y-parameters berekenen met Table 6.2
+
+y11 = (1/R1) * (m + mr) / (n - nr) %teller en n
+y22 = (1/R2) * (m - mr) / (n - nr)
+y12 = -(1/sqrt(R1*R2)) * (N12 / (n-nr))
+
+[num_coeffs, ~] = tfdata(y11, 'v');
+[~, den_coeffs] = tfdata(y11, 'v');
+teller_y11 = num_coeffs;
+noemer_y11 = den_coeffs;
+zeros_y11 = roots(teller_y11) 
+polen_y11 = roots(noemer_y11)
