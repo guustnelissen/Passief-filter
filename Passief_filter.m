@@ -66,8 +66,8 @@ disp('De berekende polen zijn:');
 disp(polen.');   %met .' ga je van een rij-vector naar een kolom vector
 
 figure;
-zplane([], polen.'); % Toont de polen op de ellips
-title('Pool-Nulpunten diagram (Chebyshev Orde 5)');
+zplane([], polen.'); % Toont de polen op de cirkel
+title('Pool-Nulpunten diagram (Butterworth Orde 3)');
 grid on
 
 TF_teller = real(prod(-polen)); %dit kan enkel bij transferfuncties van laagdoorlaat filters
@@ -207,14 +207,14 @@ Ro_kwad = 1 - 4*(R1/R2) * T_kwad
 T_kwad_bd = T * T_min_s;
 display(T_kwad_bd)
 
-Ro_kwad = 1 - 4*(R1/R2) * T_kwad_bd
+Ro_kwad = 1 - (4*(R1/R2) * T_kwad_bd) %het lijkt alsof teller en noemer hetzelfde is maar dit is niet, matlab rondt te veel af
 %% n en m berekenen
 %n en m berkenen kan ook al sneller uit T(s) met formule (6.25 (a))
 % 1. Haal de stabiele noemer (m + n)
 [~, den_coeffs] = tfdata(Ro_kwad, 'v');
 all_poles = roots(den_coeffs);
-stable_poles = all_poles(real(all_poles) < -1e-5); %pak de neg polen
-D_s = poly(stable_poles); % Dit is m + n
+stable_poles = all_poles(real(all_poles) < -1e-5); %pak de neg polen in het LHV
+D_s = poly(stable_poles) % Dit is m + n
 
 % 2. Splits m en n
 m_coeffs = zeros(size(D_s)); %initiatie
@@ -229,8 +229,8 @@ n_mask = mod(indices, 2) ~= 0; %is er een restwaarde?
 m_coeffs(m_mask) = D_s(m_mask);
 n_coeffs(n_mask) = D_s(n_mask);
 
-m = tf(m_coeffs, 1);
-n = tf(n_coeffs, 1);
+m = tf(m_coeffs, 1)
+n = tf(n_coeffs, 1)
 n2_m2 = m^2 - n^2 %dit is inderdaad de noemer van ro_kwad, :)
 
 %% nr en mr bereken
@@ -239,7 +239,7 @@ n2_m2 = m^2 - n^2 %dit is inderdaad de noemer van ro_kwad, :)
 all_zeros = roots(num_coeffs);
 stable_zeros = all_zeros(real(all_zeros) < 0) %We kiezen hier even ez de linkse nullen. 
 % Dit kunnen ook andere zijn, dit gaan mss ook zo moeten want je gaat mss niet de goede K factor vinden met de nullen dat je hebt gekozen
-F_s = poly(stable_zeros); % Dit is mr + nr
+F_s = poly(stable_zeros) % Dit is mr + nr
 
 % 2. Splits m en n
 mr_coeffs = zeros(size(F_s)); %initiatie
@@ -254,28 +254,28 @@ nr_mask = mod(indices, 2) ~= 0; %is er een restwaarde?
 mr_coeffs(mr_mask) = F_s(mr_mask);
 nr_coeffs(nr_mask) = F_s(nr_mask);
 
-mr = tf(mr_coeffs, 1);
-nr = tf(nr_coeffs, 1);
+mr = tf(mr_coeffs, 1)
+nr = tf(nr_coeffs, 1)
 nr2_mr2 = mr^2 - nr^2; %dit is inderdaad de teller van ro_kwad, :)
 
 %% N12 door (6.25 (a)) om te vormen
 fef =  2* sqrt(R1/R2) * T;
 [num_coeffs, ~] = tfdata(fef, 'v');
 [~, den_coeffs] = tfdata(fef, 'v');
-N12 = num_coeffs;
+N12 = num_coeffs
 %als check:
 %den_coeffs = n + m ; KLOPT :)
 
 %% Y-parameters berekenen met Table 6.2
-
-y11 = (1/R1) * (m + mr) / (n - nr) %teller en n
-y22 = (1/R2) * (m - mr) / (n - nr)
-y12 = -(1/sqrt(R1*R2)) * (N12 / (n-nr))
+%N12 is odd
+y11 = (1/R1) * (n + nr) / (m - mr) %teller en n
+y22 = (1/R2) * (n - nr) / (m - mr)
+y12 = -(1/sqrt(R1*R2)) * (N12 / (m-mr))
 
 [num_coeffs, ~] = tfdata(y11, 'v');
 [~, den_coeffs] = tfdata(y11, 'v');
 teller_y11 = num_coeffs;
 noemer_y11 = den_coeffs;
-zeros_y11 = roots(teller_y11) 
-polen_y11 = roots(noemer_y11)
+zeros_y11 = round(roots(teller_y11),3) 
+polen_y11 = round(roots(noemer_y11),3)
 
