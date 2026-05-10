@@ -132,7 +132,7 @@ gain_K = (B^orde) * prod(abs(polen));
 H_bpf = tf(teller, noemer);
 
 disp('De transferfunctie van het Banddoorlaatfilter is:');
-H_bpf
+display(H_bpf)
 %% Transformatie van Laagdoorlaat (H) naar Banddoorlaat (H_bp) 
 
 % Gebruik MATLAB's lp2bp functie. Deze past exact de substitutie 
@@ -258,11 +258,98 @@ mr = tf(mr_coeffs, 1)
 nr = tf(nr_coeffs, 1)
 nr2_mr2 = mr^2 - nr^2; %dit is inderdaad de teller van ro_kwad, :)
 
+%% Z_in en z11 bepalen (Case B voor Banddoorlaat)
+rho = tf(F_s,D_s);
+syms s
+
+% Zet de gevonden polynomen om naar symbolische vorm (makkelijker voor Cauer)
+m_sym = poly2sym(m_coeffs, s);
+n_sym = poly2sym(n_coeffs, s);
+mr_sym = poly2sym(mr_coeffs, s);
+nr_sym = poly2sym(nr_coeffs, s);
+
+R = 50; % Je bronweerstand
+
+% Bereken m1, n1, m2, n2 volgens Case B (zie Uitleg 3de categorie.pdf, Tabel 6-1)
+% z11 moet een oneven/even functie zijn
+m1 = simplify(m_sym - mr_sym); % Of m + mr, afhankelijk van het ± teken in je boek
+n1 = simplify(n_sym + nr_sym); % Of n - nr
+m2 = simplify(m_sym + mr_sym); %even check :)
+n2 = simplify(n_sym - nr_sym); %oneven check :)
+
+% Controleer of z11 (n1/m2) de juiste nullen in de oorsprong heeft voor een banddoorlaat
+z11 = simplify((n1) / (m2));
+
+disp('De z11 voor de Cauer synthese is:');
+disp(vpa(z11, 5));
+
+z12 = sqrt(R) * (sqrt(-(m1*m2 - n1*n2)) / m2);
+disp('De z12 voor de Cauer synthese is:');
+disp(vpa(z12, 5));
+
+% --- Betrouwbare methode voor Z12 layout ---
+
+% 1. Definieer de teller en noemer symbolisch
+teller_z12_kwadraat = simplify(R * -(m1*m2 - n1*n2));
+noemer_z12_sym = m2;
+
+% 2. Pak de coëfficiënten van de noemer (dit gaat meestal goed)
+den_coeffs = double(poly2sym2poly(noemer_z12_sym, s));
+
+% 3. Voor de teller: we berekenen de coëfficiënten van de term ONDER de wortel
+teller_poly_onder_wortel = double(poly2sym2poly(teller_z12_kwadraat, s));
+
+% 4. Omdat we weten dat voor een banddoorlaat z12 de vorm K*s^n / noemer heeft,
+% zoeken we de enige coëfficiënt in de teller die NIET nul is (of de grootste).
+K_val = sqrt(max(abs(teller_poly_onder_wortel))); 
+
+% 5. Bouw de teller vector handmatig op basis van de graad
+% Voor een 6de orde banddoorlaat zit de s^3 term in het midden
+num_coeffs = zeros(1, length(den_coeffs));
+macht_van_s = 3; % Pas dit aan als je teller een andere macht van s heeft (bijv. s^1 of s^2)
+num_coeffs(end - macht_van_s) = K_val;
+
+% 6. Maak de TF aan
+Z12_pretty = tf(num_coeffs, den_coeffs);
+
+% Zorg dat de vectoren exact als 'double' rijen worden doorgegeven
+Z12_final = tf(double(num_coeffs), double(den_coeffs));
+
+% Forceer de weergave
+fprintf('\nZ12 weergave:\n');
+Z12_final  % <--- GEEN punt-komma hier!
+
+% --- Hulpfunctie (plaats deze onderaan je script of voer dit uit) ---
+function p = poly2sym2poly(sym_expr, var)
+    % Forceert een symbolische expressie naar een numerieke vector
+    c = coeffs(expand(vpa(sym_expr, 8)), var, 'All');
+    p = double(c);
+end
+
+% --- Z11 omzetten naar mooie TF layout ---
+
+% 1. Haal de teller (n1) en noemer (m2) op uit de symbolische z11
+% Gebruik vpa om breuken om te zetten naar decimalen voor de weergave
+num_z11_sym = n1;
+den_z11_sym = m2;
+
+% 2. Gebruik de hulpfunctie om de coëfficiënten naar numerieke vectoren te halen
+% Dit zorgt ervoor dat kleine symbolische restjes verdwijnen
+num_z11_vec = double(poly2sym2poly(num_z11_sym, s));
+den_z11_vec = double(poly2sym2poly(den_z11_sym, s));
+
+% 3. Maak het Transfer Function object aan
+Z11_final = tf(num_z11_vec, den_z11_vec);
+
+% 4. Forceer de visuele weergave (zoals in image_29c8af.png)
+fprintf('\nDe z11 voor de Cauer synthese (TF weergave):\n');
+Z11_final % <--- GEEN punt-komma voor de layout
 %% N12 door (6.25 (a)) om te vormen
 fef =  2* sqrt(R1/R2) * T;
 [num_coeffs, ~] = tfdata(fef, 'v');
 [~, den_coeffs] = tfdata(fef, 'v');
 N12 = num_coeffs
+N12_pol = tf(N12,1)
 %als check:
 %den_coeffs = n + m ; KLOPT :)
 
@@ -270,7 +357,7 @@ N12 = num_coeffs
 %N12 is odd
 y11 = (1/R1) * (n + nr) / (m - mr) %teller en n
 y22 = (1/R2) * (n - nr) / (m - mr)
-y12 = -(1/sqrt(R1*R2)) * (N12 / (m-mr))
+y12 = -(1/sqrt(R1*R2)) * (N12_pol / (m-mr))
 
 [num_coeffs, ~] = tfdata(y11, 'v');
 [~, den_coeffs] = tfdata(y11, 'v');
@@ -279,3 +366,51 @@ noemer_y11 = den_coeffs;
 zeros_y11 = round(roots(teller_y11),3) 
 polen_y11 = round(roots(noemer_y11),3)
 
+z11 = (R1*(n-nr))/(m+mr)
+z22 = (R2*(n+nr))/(m+mr)
+z12 = sqrt(R1*R2)*(N12_pol/(m+mr))
+
+%% ABCD matrices berekenen om zo te checken of Z-param juist zijn
+Rl = 1;
+Rs = RE_norm;
+C1 = 76.27765065;
+L1 = 0.01190231866;
+L2 = 0.001207681337;
+C2 = 912.0502424;
+L3 = 0.0003295146798;
+C3 = 3034.766162;
+
+syms s
+M_Rs = [1, -Rs; 0, 1];
+M_C1shunt = [1, 0; -C1*s, 1];
+M_L1serie = [1, -L1*s; 0, 1];
+M_L2shunt = [1, 0; -1/(L2*s), 1];
+M_C2serie = [1, -1/(C2*s); 0, 1];
+M_L3shunt = [1, 0; -1/(L3*s), 1];
+M_C3shunt = [1, 0; -C3*s, 1];
+M_Rl = [1, 0; -1/Rl, 1];
+
+ABCD = M_Rl * M_C3shunt * M_L3shunt * M_C2serie * M_L2shunt * M_L1serie * M_C1shunt * M_Rs;
+ABCD_final = simplify(ABCD);
+
+% Z-parameters extraheren uit de ABCD matrix
+% z11 = A/C, z12 = 1/C, z22 = D/C
+A = ABCD_final(1,1);
+B = ABCD_final(1,2);
+C = ABCD_final(2,1);
+D = ABCD_final(2,2);
+
+z11 = simplify(A/C);
+z22 = simplify(D/C);
+z12 = simplify(1/C);
+
+% Maak alles leesbaar
+final_z11 = simplify(vpa(z11, 4));
+final_z12 = simplify(vpa(z12, 4));
+final_z22 = simplify(vpa(z22, 4));
+
+digits(4); % Stelt de globale precisie in op 4 cijfers
+disp('--- Resultaten ---');
+fprintf('z11 = '); disp(vpa(z11));
+fprintf('z22 = '); disp(vpa(z22));
+fprintf('z12 = '); disp(vpa(z12));
