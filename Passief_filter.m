@@ -366,10 +366,12 @@ noemer_y11 = den_coeffs;
 zeros_y11 = round(roots(teller_y11),3) 
 polen_y11 = round(roots(noemer_y11),3)
 
-z11 = (R1*(n-nr))/(m+mr)
-z22 = (R2*(n+nr))/(m+mr)
-z12 = sqrt(R1*R2)*(N12_pol/(m+mr))
-
+z11 = (R1*(n-nr))/(m+mr);
+z22 = (R2*(n+nr))/(m+mr);
+z12 = sqrt(R1*R2)*(N12_pol/(m+mr));
+zpk(z11)
+zpk(z22)
+zpk(z12)
 %% ABCD matrices berekenen om zo te checken of Z-param juist zijn
 Rl = 1;
 Rs = RE_norm;
@@ -380,37 +382,24 @@ C2 = 912.0502424;
 L3 = 0.0003295146798;
 C3 = 3034.766162;
 
-syms s
-M_Rs = [1, -Rs; 0, 1];
+s = tf('s');
 M_C1shunt = [1, 0; -C1*s, 1];
 M_L1serie = [1, -L1*s; 0, 1];
 M_L2shunt = [1, 0; -1/(L2*s), 1];
 M_C2serie = [1, -1/(C2*s); 0, 1];
 M_L3shunt = [1, 0; -1/(L3*s), 1];
 M_C3shunt = [1, 0; -C3*s, 1];
-M_Rl = [1, 0; -1/Rl, 1];
 
-ABCD = M_Rl * M_C3shunt * M_L3shunt * M_C2serie * M_L2shunt * M_L1serie * M_C1shunt * M_Rs;
-ABCD_final = simplify(ABCD);
+ABCD = M_C3shunt * M_L3shunt * M_C2serie * M_L2shunt * M_L1serie * M_C1shunt;
+ABCD_final = ABCD
 
 % Z-parameters extraheren uit de ABCD matrix
 % z11 = A/C, z12 = 1/C, z22 = D/C
-A = ABCD_final(1,1);
-B = ABCD_final(1,2);
-C = ABCD_final(2,1);
-D = ABCD_final(2,2);
+A = remove_common_factors(ABCD_final(1,1))
+B = remove_common_factors(ABCD_final(1,2))
+C = remove_common_factors((zpk(ABCD_final(2,1))))
+D = remove_common_factors(ABCD_final(2,2))
 
-z11 = simplify(A/C);
-z22 = simplify(D/C);
-z12 = simplify(1/C);
-
-% Maak alles leesbaar
-final_z11 = simplify(vpa(z11, 4));
-final_z12 = simplify(vpa(z12, 4));
-final_z22 = simplify(vpa(z22, 4));
-
-digits(4); % Stelt de globale precisie in op 4 cijfers
-disp('--- Resultaten ---');
-fprintf('z11 = '); disp(vpa(z11));
-fprintf('z22 = '); disp(vpa(z22));
-fprintf('z12 = '); disp(vpa(z12));
+z11 = remove_common_factors(zpk(-D/C))
+z22 = remove_common_factors(zpk(-A/C))
+z12 = remove_common_factors(zpk(-1/C))
