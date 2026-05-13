@@ -77,62 +77,6 @@ TF_noemer = real(poly(polen));
 H = tf(TF_teller, TF_noemer); %Dit is voor de laagdoorlaat
 display(H)
 
-%% Transformatie van LPP polen naar BPF polen
-
-% Initialiseer de array voor de BPF polen
-% Omdat elke LPP pool 2 BPF polen genereert, hebben we 2*orde polen
-polen_bpf = zeros(1, 2*orde);
-
-% Omega_0 is de genormaliseerde centrumfrequentie (dit is altijd 1)
-omega_0_norm = 1;
-
-% Loop door elke LPP pool en bereken de twee bijbehorende BPF polen
-for i = 1:orde
-    p_m = polen(i);
-    
-    % De kwadratische vergelijking is: s^2 - (B * p_m) * s + omega_0^2 = 0
-    % We gebruiken de abc-formule om s te vinden: 
-    % s = [ (B*p_m) +/- sqrt( (B*p_m)^2 - 4*omega_0^2 ) ] / 2
-    
-    term_b = B * p_m;
-    discriminant = term_b^2 - 4 * omega_0_norm^2;
-    
-    % Bereken de twee BPF polen voor deze ene LPP pool
-    s1 = (term_b + sqrt(discriminant)) / 2;
-    s2 = (term_b - sqrt(discriminant)) / 2;
-    
-    % Sla ze op in de nieuwe array
-    polen_bpf(2*i - 1) = s1;
-    polen_bpf(2*i) = s2;
-end
-
-disp('De getransformeerde polen voor de Banddoorlaat (BPF) zijn:');
-disp(polen_bpf.');
-
-% Transferfunctie van de Banddoorlaat opstellen
-
-% 1. Nulpunten (Zeros) bepalen
-% Een LPP (zoals Butterworth) heeft geen nulpunten. Bij transformatie naar
-% banddoorlaat ontstaan er 'orde' (n) nulpunten op de oorsprong (s = 0).
-nulpunten_bpf = zeros(orde, 1); 
-
-% Zorg dat polen en nulpunten kolomvectoren zijn voor MATLAB's zp2tf functie
-polen_bpf_kolom = polen_bpf.';
-
-% 2. Versterkingsfactor (Gain K) bepalen
-% De theoretische gain voor een getransformeerd all-pole filter is:
-% K = (Bandbreedte^orde) * (Product van de absolute waarden van de LPP polen)
-gain_K = (B^orde) * prod(abs(polen));
-
-% 3. Omzetten van Zeros, Poles en Gain naar Polynomen (teller en noemer)
-[teller, noemer] = zp2tf(nulpunten_bpf, polen_bpf_kolom, gain_K);
-
-% 4. Maak het transferfunctie object aan
-% (Zorg dat je de Control System Toolbox geïnstalleerd hebt voor de 'tf' functie)
-H_bpf = tf(teller, noemer);
-
-disp('De transferfunctie van het Banddoorlaatfilter is:');
-display(H_bpf)
 %% Transformatie van Laagdoorlaat (H) naar Banddoorlaat (H_bp) 
 
 % Gebruik MATLAB's lp2bp functie. Deze past exact de substitutie 
@@ -188,34 +132,28 @@ T_min_s = tf(numT_min_s, denT_min_s);
 disp('De transferfunctie T(-s) is:');
 display(T_min_s)
 
-%% (6.25) (6.26)
-%T(s)*T(-s)
-% Index:         s^3    s^2     s^1     s^0
-noemer_s     = [ 1,     2.953,  4.361,  3.219];
-noemer_min_s = [-1,     2.953, -4.361,  3.219];
 
-noemer_kwad = conv(noemer_s, noemer_min_s);
-
-disp(noemer_kwad)
-
-teller_kwad = 2.664*2.664;
-
-T_kwad = tf(teller_kwad, noemer_kwad);
-
-Ro_kwad = 1 - 4*(R1/R2) * T_kwad
 %%
 T_kwad_bd = T * T_min_s;
 display(T_kwad_bd)
 
 Ro_kwad = 1 - (4*(R1/R2) * T_kwad_bd) %het lijkt alsof teller en noemer hetzelfde is maar dit is niet, matlab rondt te veel af
+
+%[num_ro2, denum_ro2] = tfdata(Ro_kwad, 'v');
+%poles = roots(denum_ro2);
+figure
+pzplot(Ro_kwad);
+
 %% n en m berekenen
 %n en m berkenen kan ook al sneller uit T(s) met formule (6.25 (a))
 % 1. Haal de stabiele noemer (m + n)
 [~, den_coeffs] = tfdata(Ro_kwad, 'v');
 all_poles = roots(den_coeffs);
-stable_poles = all_poles(real(all_poles) < -1e-5); %pak de neg polen in het LHV
+stable_poles = all_poles(real(all_poles) < -1e-5); %pak de neg polen in het LHV want stabiel
 D_s = poly(stable_poles) % Dit is m + n
-
+figure;
+plot(real(stable_poles), imag(stable_poles), 'x')
+grid on
 % 2. Splits m en n
 m_coeffs = zeros(size(D_s)); %initiatie
 n_coeffs = zeros(size(D_s));
@@ -232,118 +170,86 @@ n_coeffs(n_mask) = D_s(n_mask);
 m = tf(m_coeffs, 1)
 n = tf(n_coeffs, 1)
 n2_m2 = m^2 - n^2 %dit is inderdaad de noemer van ro_kwad, :)
+%%
+function ok = is_geldig(zeros_vec, tol)
+    if nargin < 2, tol = 1e-6; end
+    remaining = zeros_vec(:);
+    ok = true;
 
-%% nr en mr bereken
+    while ~isempty(remaining)
+        z = remaining(1);
+        remaining(1) = [];
+
+        if abs(imag(z)) < tol
+            continue  % reële nul, geen partner nodig
+        end
+
+        % Check 1: is de geconjugeerde aanwezig?
+        diffs_conj = abs(remaining - conj(z));
+        [minVal, idx] = min(diffs_conj);
+        if minVal > tol
+            ok = false;
+            return  % geen geconjugeerde gevonden
+        end
+        remaining(idx) = [];  % geconjugeerde gevonden, verwijder
+
+        % Check 2: zit het gespiegeld paar (+a+jb en -a+jb) er NIET in?
+        for j = 1:length(remaining)
+            zj = remaining(j);
+            if abs(real(z) + real(zj)) < tol && abs(imag(z) - imag(zj)) < tol
+                ok = false;
+                return  % gespiegeld paar gevonden → ongeldig
+            end
+        end
+    end
+end
+%% nr en mr berekenen — alle geldige combinaties
 
 [num_coeffs, ~] = tfdata(Ro_kwad, 'v');
 all_zeros = roots(num_coeffs);
-stable_zeros = all_zeros(real(all_zeros) < 0) %We kiezen hier even ez de linkse nullen. 
-% Dit kunnen ook andere zijn, dit gaan mss ook zo moeten want je gaat mss niet de goede K factor vinden met de nullen dat je hebt gekozen
-F_s = poly(stable_zeros) % Dit is mr + nr
+n_zeros = length(all_zeros);
+k = 6;
 
-% 2. Splits m en n
-mr_coeffs = zeros(size(F_s)); %initiatie
-nr_coeffs = zeros(size(F_s));
+combo_indices = nchoosek(1:n_zeros, k);
+n_combos = size(combo_indices, 1);
+fprintf('Totaal aantal combinaties: %d\n', n_combos);
 
-% Even indices (s^0, s^2...) en Oneven indices (s^1, s^3...)
-% Let op: MATLAB indexeert van hoog naar laag [s^3, s^2, s^1, s^0]
-indices = length(F_s)-1:-1:0;
-mr_mask = mod(indices, 2) == 0; %is het getal deelbaar door 2?
-nr_mask = mod(indices, 2) ~= 0; %is er een restwaarde?
+geldige_combos = {};
 
-mr_coeffs(mr_mask) = F_s(mr_mask);
-nr_coeffs(nr_mask) = F_s(nr_mask);
+for i = 1:n_combos
+    kandidaat = all_zeros(combo_indices(i,:));
 
-mr = tf(mr_coeffs, 1)
-nr = tf(nr_coeffs, 1)
-nr2_mr2 = mr^2 - nr^2; %dit is inderdaad de teller van ro_kwad, :)
+    if is_geldig(kandidaat)  % <-- bevat nu BEIDE checks
+        geldige_combos{end+1} = kandidaat;
+        fprintf('\nGeldige combinatie %d: index [%s]\n', ...
+            length(geldige_combos), num2str(combo_indices(i,:)));
+        disp(kandidaat);
 
-%% Z_in en z11 bepalen (Case B voor Banddoorlaat)
-rho = tf(F_s,D_s);
-syms s
+        % F_s berekenen voor deze combinatie
+        F_s = real(poly(kandidaat));  % real() om numerieke ruis weg te halen
 
-% Zet de gevonden polynomen om naar symbolische vorm (makkelijker voor Cauer)
-m_sym = poly2sym(m_coeffs, s);
-n_sym = poly2sym(n_coeffs, s);
-mr_sym = poly2sym(mr_coeffs, s);
-nr_sym = poly2sym(nr_coeffs, s);
+        % Splits mr en nr
+        mr_coeffs = zeros(size(F_s));
+        nr_coeffs = zeros(size(F_s));
+        indices = length(F_s)-1:-1:0;
+        mr_coeffs(mod(indices,2)==0) = F_s(mod(indices,2)==0);
+        nr_coeffs(mod(indices,2)~=0) = F_s(mod(indices,2)~=0);
+        % Strip leading zeros
+        mr_coeffs_clean = mr_coeffs(find(mr_coeffs, 1) : end);
+        nr_coeffs_clean = nr_coeffs(find(nr_coeffs, 1) : end);
+        
+        mr = tf(mr_coeffs_clean, 1);
+        nr = tf(nr_coeffs_clean, 1);
 
-R = 50; % Je bronweerstand
-
-% Bereken m1, n1, m2, n2 volgens Case B (zie Uitleg 3de categorie.pdf, Tabel 6-1)
-% z11 moet een oneven/even functie zijn
-m1 = simplify(m_sym - mr_sym); % Of m + mr, afhankelijk van het ± teken in je boek
-n1 = simplify(n_sym + nr_sym); % Of n - nr
-m2 = simplify(m_sym + mr_sym); %even check :)
-n2 = simplify(n_sym - nr_sym); %oneven check :)
-
-% Controleer of z11 (n1/m2) de juiste nullen in de oorsprong heeft voor een banddoorlaat
-z11 = simplify((n1) / (m2));
-
-disp('De z11 voor de Cauer synthese is:');
-disp(vpa(z11, 5));
-
-z12 = sqrt(R) * (sqrt(-(m1*m2 - n1*n2)) / m2);
-disp('De z12 voor de Cauer synthese is:');
-disp(vpa(z12, 5));
-
-% --- Betrouwbare methode voor Z12 layout ---
-
-% 1. Definieer de teller en noemer symbolisch
-teller_z12_kwadraat = simplify(R * -(m1*m2 - n1*n2));
-noemer_z12_sym = m2;
-
-% 2. Pak de coëfficiënten van de noemer (dit gaat meestal goed)
-den_coeffs = double(poly2sym2poly(noemer_z12_sym, s));
-
-% 3. Voor de teller: we berekenen de coëfficiënten van de term ONDER de wortel
-teller_poly_onder_wortel = double(poly2sym2poly(teller_z12_kwadraat, s));
-
-% 4. Omdat we weten dat voor een banddoorlaat z12 de vorm K*s^n / noemer heeft,
-% zoeken we de enige coëfficiënt in de teller die NIET nul is (of de grootste).
-K_val = sqrt(max(abs(teller_poly_onder_wortel))); 
-
-% 5. Bouw de teller vector handmatig op basis van de graad
-% Voor een 6de orde banddoorlaat zit de s^3 term in het midden
-num_coeffs = zeros(1, length(den_coeffs));
-macht_van_s = 3; % Pas dit aan als je teller een andere macht van s heeft (bijv. s^1 of s^2)
-num_coeffs(end - macht_van_s) = K_val;
-
-% 6. Maak de TF aan
-Z12_pretty = tf(num_coeffs, den_coeffs);
-
-% Zorg dat de vectoren exact als 'double' rijen worden doorgegeven
-Z12_final = tf(double(num_coeffs), double(den_coeffs));
-
-% Forceer de weergave
-fprintf('\nZ12 weergave:\n');
-Z12_final  % <--- GEEN punt-komma hier!
-
-% --- Hulpfunctie (plaats deze onderaan je script of voer dit uit) ---
-function p = poly2sym2poly(sym_expr, var)
-    % Forceert een symbolische expressie naar een numerieke vector
-    c = coeffs(expand(vpa(sym_expr, 8)), var, 'All');
-    p = double(c);
+        display(mr)
+        display(nr)
+    end
 end
 
-% --- Z11 omzetten naar mooie TF layout ---
+fprintf('\nAantal geldige combinaties: %d\n', length(geldige_combos));
+nr2_mr2 = mr^2 - nr^2; %dit is inderdaad de teller van ro_kwad, :)
 
-% 1. Haal de teller (n1) en noemer (m2) op uit de symbolische z11
-% Gebruik vpa om breuken om te zetten naar decimalen voor de weergave
-num_z11_sym = n1;
-den_z11_sym = m2;
 
-% 2. Gebruik de hulpfunctie om de coëfficiënten naar numerieke vectoren te halen
-% Dit zorgt ervoor dat kleine symbolische restjes verdwijnen
-num_z11_vec = double(poly2sym2poly(num_z11_sym, s));
-den_z11_vec = double(poly2sym2poly(den_z11_sym, s));
-
-% 3. Maak het Transfer Function object aan
-Z11_final = tf(num_z11_vec, den_z11_vec);
-
-% 4. Forceer de visuele weergave (zoals in image_29c8af.png)
-fprintf('\nDe z11 voor de Cauer synthese (TF weergave):\n');
-Z11_final % <--- GEEN punt-komma voor de layout
 %% N12 door (6.25 (a)) om te vormen
 fef =  2* sqrt(R1/R2) * T;
 [num_coeffs, ~] = tfdata(fef, 'v');
@@ -353,22 +259,11 @@ N12_pol = tf(N12,1)
 %als check:
 %den_coeffs = n + m ; KLOPT :)
 
-%% Y-parameters berekenen met Table 6.2
+%% Z-parameters berekenen met Table 6.2
 %N12 is odd
-y11 = (1/R1) * (n + nr) / (m - mr) %teller en n
-y22 = (1/R2) * (n - nr) / (m - mr)
-y12 = -(1/sqrt(R1*R2)) * (N12_pol / (m-mr))
-
-[num_coeffs, ~] = tfdata(y11, 'v');
-[~, den_coeffs] = tfdata(y11, 'v');
-teller_y11 = num_coeffs;
-noemer_y11 = den_coeffs;
-zeros_y11 = round(roots(teller_y11),3) 
-polen_y11 = round(roots(noemer_y11),3)
-
-z11 = (R1*(n-nr))/(m+mr);
-z22 = (R2*(n+nr))/(m+mr);
-z12 = sqrt(R1*R2)*(N12_pol/(m+mr));
+z11 = (R1*(n-nr))/(m+mr)
+z22 = (R2*(n+nr))/(m+mr)
+z12 = sqrt(R1*R2)*(N12_pol/(m+mr))
 zpk(z11)
 zpk(z22)
 zpk(z12)
@@ -391,7 +286,7 @@ M_L3shunt = [1, 0; -1/(L3*s), 1];
 M_C3shunt = [1, 0; -C3*s, 1];
 
 ABCD = M_C3shunt * M_L3shunt * M_C2serie * M_L2shunt * M_L1serie * M_C1shunt;
-ABCD_final = ABCD
+ABCD_final = ABCD;
 
 % Z-parameters extraheren uit de ABCD matrix
 % z11 = A/C, z12 = 1/C, z22 = D/C
